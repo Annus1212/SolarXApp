@@ -32,12 +32,14 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -47,6 +49,7 @@ import androidx.navigation.NavHostController
 import com.example.solarx.R
 import com.example.solarx.api.isValidPassword
 import com.example.solarx.api.isValidPassword2
+import com.example.solarx.pages.viewM.loginViewModel
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +60,7 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.net.SocketTimeoutException
 
 class APIModel(): ViewModel() {
 
@@ -94,7 +98,8 @@ fun LoginPage(navHost: NavHostController)
     var PocketWIFISN by remember { mutableStateOf(SharedPocketWIFISN) }
     var saveSN by remember { mutableStateOf(true) }
     var isValidPass by remember { mutableStateOf(true)}
-    var vm = APIModel()
+    val main = ContextCompat.getMainExecutor(navHost.context)
+    var vm = loginViewModel()
     Column (
 //        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -148,24 +153,37 @@ fun LoginPage(navHost: NavHostController)
                         Toast.makeText(navHost.context, "Spaces not Allowed in WI-FI SN", Toast.LENGTH_SHORT).show();
                         return@Button;
                     }
-                    try {
-                        vm.isValidPassword(IPAddress, PocketWIFISN) { result ->
-                            if (result) {
-                                SharedPref.edit().putString("IPAddress", IPAddress)
-                                    .putString("Serial", PocketWIFISN).apply()
-                                navHost.navigate("Dashboard")
-                            } else {
-                                Toast.makeText(
-                                    navHost.context,
-                                    "Invalid Inverter Wifi SN",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                    vm.isValidPassword(IPAddress, PocketWIFISN) { result ->
+                        result.fold(
+                            onSuccess = {
+                                isValid ->
+                                if (isValid) {
+                                    main.execute {
+                                        SharedPref.edit().putString("IPAddress", IPAddress)
+                                            .putString("Serial", PocketWIFISN).apply()
+                                        navHost.navigate("Dashboard")
+                                    }
+                                } else {
+                                    main.execute {
+                                        Toast.makeText(
+                                            navHost.context,
+                                            "Wrong Inverter Wifi SN",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            },
+                            onFailure = {
+                                exception ->
+                                main.execute {
+                                    when(exception) {
+                                        is SocketTimeoutException -> {
+                                            Toast.makeText(navHost.context, "Inverter not Online or not Present on ${IPAddress}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
                             }
-                        }
-                    }
-                    catch (ex: Exception)
-                    {
-                        Toast.makeText(navHost.context, ex.message, Toast.LENGTH_SHORT).show()
+                        )
                     }
 
             }) {

@@ -12,6 +12,8 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.net.Socket
+import java.net.SocketException
 
 fun stringToNumberArray(numberString: String): Array<Int> {
     return numberString
@@ -39,10 +41,18 @@ class responseViewModel(SharedIPAddress:String,SharedPocketWIFISN:String): ViewM
 
     fun getRealTimeData(callback: (Array<Int>) -> Unit) {
         viewModelScope.launch {
-            val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
-            val data = response.body!!.string()
-            val org = JSONObject(data)
-            callback(stringToNumberArray(org["Data"].toString()))
+            try {
+                val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
+                val data = response.body!!.string()
+                val org = JSONObject(data)
+                callback(stringToNumberArray(org["Data"].toString()))
+            }
+            catch (e: Exception)
+            {
+                when(e) {
+                    is SocketException -> {}
+                }
+            }
         }
     }
     fun getRealTimeData(IP: String, SN: String,callback: (Any) -> Unit) {
