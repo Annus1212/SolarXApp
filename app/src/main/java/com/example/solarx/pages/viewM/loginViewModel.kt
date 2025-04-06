@@ -3,6 +3,13 @@ package com.example.solarx.pages.viewM
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.forms.submitForm
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.parameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -18,46 +25,32 @@ import java.util.concurrent.TimeUnit
 class loginViewModel: ViewModel() {
 
     fun isValidPassword(IP: String, Serial: String, callback: (Result<Boolean>) -> Unit): Unit {
-        val client = OkHttpClient.Builder().connectTimeout(1500, TimeUnit.MILLISECONDS).build()
-
-        // Define the URL for the POST request
-        val url = "http://${IP}/"
-
-        // Create a JSON media type
-        // Define the raw JSON request body
-        val formBody = FormBody.Builder()
-            .add("optType", "newParaSetting")
-            .add("subOption", "pwd")
-            .add("Value", Serial)
-            .build()
-
-        val request = Request.Builder()
-            .url(url)
-            .post(formBody)
-            .build()
-
-        // Create a RequestBody instance
-        viewModelScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-//                client.newCall(request).execute()
-                    client.newCall(request).enqueue(object : Callback {
-                        override fun onResponse(call: Call, response: Response) {
-                            val re = response.body?.string()?.get(0) == 'Y'
-                            callback(Result.success(re))
-                        }
-
-                        override fun onFailure(call: Call, e: IOException) {
-                            callback(Result.failure(e))
-                        }
-                    })
-                }
-            }
-            catch (e: Exception)
-            {
-                callback(Result.failure(e))
+        val client = HttpClient(CIO) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = 1500
             }
         }
 
+        val url = "http://${IP}/"
+
+        viewModelScope.launch {
+            try {
+                val response: HttpResponse = client.submitForm(
+                    url = url,
+                    formParameters = parameters {
+                        append("optType", "newParaSetting")
+                        append("subOption", "pwd")
+                        append("Value", Serial)
+                    }
+                )
+                val responseBody = response.bodyAsText()
+                val isValid = responseBody.isNotEmpty() && responseBody[0] == 'Y'
+                callback(Result.success(isValid))
+            } catch (e: Exception) {
+                callback(Result.failure(e))
+            } finally {
+                client.close()
+            }
+        }
     }
 }
